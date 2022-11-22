@@ -1,12 +1,10 @@
+#include <NimBLEDevice.h>
+
 /*
     Based on Neil Kolban example for IDF: https://github.com/nkolban/esp32-snippets/blob/master/cpp_utils/tests/BLE%20Tests/SampleServer.cpp
     Ported to Arduino ESP32 by Evandro Copercini
     updates by chegewara
 */
-
-#include <BLEDevice.h>
-#include <BLEUtils.h>
-#include <BLEServer.h>
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
@@ -23,15 +21,15 @@ void setup() {
   BLEService *pService = pServer->createService(SERVICE_UUID);
   BLECharacteristic *pCharacteristic = pService->createCharacteristic(
                                          CHARACTERISTIC_UUID,
-                                         BLECharacteristic::PROPERTY_READ |
-                                         BLECharacteristic::PROPERTY_WRITE
+                                         NIMBLE_PROPERTY::READ
+//                                         | BLECharacteristic::PROPERTY_WRITE
                                        );
 
   pCharacteristic->setValue("Hello World says Neil");
   pService->start();
   // BLEAdvertising *pAdvertising = pServer->getAdvertising();  // this still is working for backward compatibility
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->addServiceUUID(SERVICE_UUID); 
   pAdvertising->setScanResponse(true);
   pAdvertising->setMinPreferred(0x06);  // functions that help with iPhone connections issue
   pAdvertising->setMinPreferred(0x12);
@@ -40,6 +38,5 @@ void setup() {
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
   delay(2000);
 }
