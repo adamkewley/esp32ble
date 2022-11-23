@@ -1,6 +1,6 @@
 # meg
 
-> Demo code for a bluetooth-powered EMG device
+> Demo code for a BLE-connected EMG device
 
 This is a collection of code for a ESP32 BLE device that:
 
