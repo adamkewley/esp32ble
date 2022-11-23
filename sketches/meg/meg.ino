@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <inttypes.h>
 
 // SECTION: top-level macros
 //
@@ -58,6 +59,7 @@ namespace meg
 
     PerfCounter allMeasurements{"allMeasurements"};
     PerfCounter singleMeasurement{"singleMeasurement"};
+    PerfCounter ble{"ble"};
 
   } g_PerfCounters;
 
@@ -65,7 +67,7 @@ namespace meg
   void SubmitPerfMeasurement(PerfCounter& counter, uint64_t start, uint64_t end)
   {
     counter.accumulator += end - start;
-    counter.counter++;
+    counter.counter += 1;
   }
 
   // print a counter to the serial output
@@ -75,8 +77,9 @@ namespace meg
     {
       return;  // no measurements
     }
-    const uint64_t avg = counter.accumulator / counter.counter;
-    Serial.printf("    %s: num calls = %u avg. micros = %u\n", counter.label, counter.counter, avg);
+    const uint64_t avgMicros = counter.accumulator / counter.counter;
+    const uint64_t hz = 1000000 / avgMicros;
+    Serial.printf("    %s: avg. micros = %"PRIu64", hz = %"PRIu64"\n", counter.label, avgMicros, hz);
   }
 
   // prints all performance counters
@@ -143,19 +146,19 @@ namespace meg
 
     DataMeasurement() = default;
     
-    explicit DataMeasurement(int value_) :
+    explicit DataMeasurement(uint16_t value_) :
       time{GetClockValue()},
       value{value_}
     { 
     }
     uint64_t time = 0;  // senteniel: default ctor should mean "not measured"
-    int value = 0;
+    uint16_t value = 0;
   };
 
   DataMeasurement ReadMeasurement(uint8_t pin)
   {
     MEG_PERF(g_PerfCounters.singleMeasurement);
-    return DataMeasurement{analogRead(A1)};
+    return DataMeasurement{analogRead(pin)};
   }
 }
 
@@ -165,6 +168,28 @@ namespace meg
 // utility classes/functions for maintaining the device's BLE API
 namespace meg
 {
+  struct BLEDataMessage final {
+
+    BLEDataMessage() = default;
+
+    BLEDataMessage(
+      const DataMeasurement& m1,
+      const DataMeasurement& m2,
+      const DataMeasurement& m3) :
+
+      v1{m1.value},
+      v2{m2.value},
+      v3{m3.value}    
+    {
+    }
+
+    uint16_t v1 = 0;
+    uint16_t v2 = 0;
+    uint16_t v3 = 0;
+  };
+
+  static_assert(sizeof(BLEDataMessage) == 3*sizeof(uint16_t), "someone has screwed with the message");
+
   class BLEApi final {
   public:
     BLEApi()
@@ -197,7 +222,7 @@ namespace meg
           MEG_BLE_DEVICE_INFO_CHARACTERISTIC_UUID,
           NIMBLE_PROPERTY::READ
         );
-        m_DeviceInfoCharacteristic->setValue("device info bytes here");
+        m_DeviceInfoCharacteristic->setValue(BLEDataMessage{});
         m_ConfigurationService->start();
         advertising.addServiceUUID(MEG_BLE_CONFIGURATION_SERVICE_UUID);
       }
@@ -208,6 +233,11 @@ namespace meg
       #ifdef MEG_DEBUG
         Serial.println("end  : initializing BLE device");
       #endif
+    }
+
+    void setMeasurementMessage(const BLEDataMessage& m)
+    {
+      m_DeviceInfoCharacteristic->setValue(m);
     }
 
     BLEApi(const BLEApi&) = delete;
@@ -236,11 +266,28 @@ void setup()
 
   while (true)
   {
-    // do performance-counted work
-    MEG_PERF(meg::g_PerfCounters.allMeasurements);
-    meg::DataMeasurement m1 = meg::ReadMeasurement(A1);
-    meg::DataMeasurement m2 = meg::ReadMeasurement(A1);
-    meg::DataMeasurement m3 = meg::ReadMeasurement(A1);
+    meg::DataMeasurement m1;
+    meg::DataMeasurement m2;
+    meg::DataMeasurement m3;
+
+    // take emg measurements
+    {
+      MEG_PERF(meg::g_PerfCounters.allMeasurements);
+      m1 = meg::ReadMeasurement(A1);
+      m2 = meg::ReadMeasurement(A2);
+      m3 = meg::ReadMeasurement(A3);
+    }
+
+    // update BLE characteristics
+    {
+      MEG_PERF(meg::g_PerfCounters.ble);
+      meg::BLEDataMessage message{m1, m2, m3};
+      bleApi.setMeasurementMessage(message);
+    }
+
+    // debug stuff
+    meg::PrintAllPerfCountersToSerial();
+    delay(1000);
   }
 }
 
